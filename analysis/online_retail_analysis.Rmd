@@ -1,0 +1,522 @@
+---
+title: "Online Retail Customer Analytics"
+author: "Madhu Mitha"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+# Project Overview
+
+This project presents an end-to-end analysis of online retail transaction data to understand customer purchasing behavior, revenue performance, geographic activity, product performance, cancellations, data quality, and transaction patterns.
+
+The analysis was completed in R using data wrangling, exploratory data analysis, aggregation, feature engineering, and visualization techniques to transform raw transaction data into business-focused insights.
+
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+library(dplyr)
+library(ggplot2)
+```
+
+# Data Import
+
+The dataset contains transaction-level records from a UK-based online retailer, including invoice information, products, quantities, prices, customer identifiers, and customer countries.
+
+```{r data-import}
+retail <- read.csv("../data/Online_Retail.csv")
+
+dim(retail)
+head(retail)
+str(retail)
+summary(retail)
+```
+
+# Data Preparation
+
+A transaction-level revenue measure was created by multiplying the quantity purchased by the unit price.
+
+```{r transaction-value}
+retail <- retail %>%
+  mutate(
+    TransactionValue = Quantity * UnitPrice
+  )
+
+summary(retail$TransactionValue)
+```
+
+# Date & Time Feature Engineering
+
+The invoice timestamp was converted into a date-time object and separated into additional analytical features.
+
+```{r date-features}
+invoice_datetime <- strptime(
+  retail$InvoiceDate,
+  format = "%m/%d/%Y %H:%M",
+  tz = "GMT"
+)
+
+retail <- retail %>%
+  mutate(
+    InvoiceDateParsed = as.Date(invoice_datetime),
+    InvoiceDayOfWeek = weekdays(InvoiceDateParsed),
+    InvoiceHour = as.numeric(format(invoice_datetime, "%H")),
+    InvoiceMonth = as.numeric(format(invoice_datetime, "%m"))
+  )
+```
+
+These features make it possible to analyze customer activity across dates, weekdays, hours, and months.
+
+# Data Quality Analysis
+
+Missing values were evaluated across all variables to identify potential data-quality issues.
+
+```{r missing-values}
+missing_percentage <- colMeans(is.na(retail)) * 100
+
+missing_percentage
+```
+
+Missing Customer ID records were also analyzed by country.
+
+```{r missing-customer-country}
+missing_customer_by_country <- retail %>%
+  filter(is.na(CustomerID)) %>%
+  count(Country, sort = TRUE)
+
+missing_customer_by_country
+```
+
+This analysis helps identify where incomplete customer information is concentrated and where additional validation may be required before customer-level analysis.
+
+# Geographic Analysis
+
+## Transaction Activity by Country
+
+Transaction activity was aggregated by country to understand the geographic distribution of the retailer's business.
+
+```{r country-transactions}
+country_transactions <- retail %>%
+  count(Country, name = "Transactions") %>%
+  mutate(
+    Percentage = 100 * Transactions / nrow(retail)
+  ) %>%
+  arrange(desc(Transactions))
+
+country_transactions %>%
+  filter(Percentage > 1)
+```
+
+## Transaction Value by Country
+
+Total transaction value was calculated for each country to identify markets generating significant revenue.
+
+```{r country-revenue}
+country_revenue <- retail %>%
+  group_by(Country) %>%
+  summarise(
+    TotalTransactionValue =
+      sum(TransactionValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(TotalTransactionValue))
+
+country_revenue %>%
+  filter(TotalTransactionValue > 130000)
+```
+
+# Geographic Visualization
+
+```{r geographic-visualization}
+top_countries <- country_revenue %>%
+  slice_max(
+    order_by = TotalTransactionValue,
+    n = 10
+  )
+
+ggplot(
+  top_countries,
+  aes(
+    x = reorder(Country, TotalTransactionValue),
+    y = TotalTransactionValue
+  )
+) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Top Countries by Transaction Value",
+    x = "Country",
+    y = "Total Transaction Value"
+  ) +
+  theme_minimal()
+```
+
+# Time-Based Analysis
+
+## Transaction Activity by Day of Week
+
+```{r weekday-activity}
+weekday_transactions <- retail %>%
+  group_by(InvoiceDayOfWeek) %>%
+  summarise(
+    Transactions = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    TransactionPercentage =
+      100 * Transactions / sum(Transactions)
+  )
+
+weekday_transactions
+```
+
+## Transaction Value by Day of Week
+
+```{r weekday-value}
+weekday_value <- retail %>%
+  group_by(InvoiceDayOfWeek) %>%
+  summarise(
+    TransactionValue =
+      sum(TransactionValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ValuePercentage =
+      100 * TransactionValue /
+      sum(TransactionValue)
+  )
+
+weekday_value
+```
+
+## Monthly Transaction Value
+
+```{r monthly-value}
+monthly_value <- retail %>%
+  group_by(InvoiceMonth) %>%
+  summarise(
+    TransactionValue =
+      sum(TransactionValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ValuePercentage =
+      100 * TransactionValue /
+      sum(TransactionValue)
+  )
+
+monthly_value
+```
+
+## Monthly Revenue Visualization
+
+```{r monthly-revenue-chart}
+ggplot(
+  monthly_value,
+  aes(
+    x = InvoiceMonth,
+    y = TransactionValue
+  )
+) +
+  geom_col() +
+  scale_x_continuous(breaks = 1:12) +
+  labs(
+    title = "Monthly Transaction Value",
+    x = "Month",
+    y = "Transaction Value"
+  ) +
+  theme_minimal()
+```
+
+# Australia Transaction Analysis
+
+The date with the highest transaction activity for Australian customers was identified.
+
+```{r australia-analysis}
+australia_transactions <- retail %>%
+  filter(Country == "Australia") %>%
+  count(
+    InvoiceDateParsed,
+    name = "Transactions"
+  ) %>%
+  arrange(desc(Transactions))
+
+head(australia_transactions, 1)
+```
+
+# Website Activity Analysis
+
+Hourly transaction activity was evaluated to understand customer usage patterns during the IT team's operating window.
+
+```{r hourly-analysis}
+hourly_activity <- retail %>%
+  filter(
+    InvoiceHour >= 7,
+    InvoiceHour <= 20
+  ) %>%
+  group_by(InvoiceHour) %>%
+  summarise(
+    Transactions = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(InvoiceHour)
+
+hourly_activity
+```
+
+Two consecutive hours were evaluated to identify the lowest-activity maintenance window.
+
+```{r maintenance-window}
+maintenance_windows <- data.frame(
+  StartHour = hourly_activity$InvoiceHour[-nrow(hourly_activity)],
+  EndHour = hourly_activity$InvoiceHour[-1],
+  TwoHourTransactions =
+    hourly_activity$Transactions[-nrow(hourly_activity)] +
+    hourly_activity$Transactions[-1]
+)
+
+maintenance_windows %>%
+  arrange(TwoHourTransactions) %>%
+  head(1)
+```
+
+## Hourly Activity Visualization
+
+```{r hourly-chart}
+ggplot(
+  hourly_activity,
+  aes(
+    x = InvoiceHour,
+    y = Transactions
+  )
+) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Transaction Activity by Hour",
+    x = "Hour of Day",
+    y = "Number of Transaction Records"
+  ) +
+  theme_minimal()
+```
+
+# Customer Analysis
+
+Customer-level analysis excludes records where Customer ID is unavailable.
+
+```{r customer-data}
+customer_data <- retail %>%
+  filter(!is.na(CustomerID))
+```
+
+## Most Active Customer
+
+Customers were ranked according to the number of transaction records associated with their Customer ID.
+
+```{r active-customer}
+customer_activity <- customer_data %>%
+  count(
+    CustomerID,
+    name = "TransactionRecords"
+  ) %>%
+  arrange(desc(TransactionRecords))
+
+head(customer_activity, 10)
+```
+
+## Highest-Value Customer
+
+Customers were also ranked by total transaction value.
+
+```{r valuable-customer}
+customer_value <- customer_data %>%
+  group_by(CustomerID) %>%
+  summarise(
+    TotalTransactionValue =
+      sum(TransactionValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(TotalTransactionValue))
+
+head(customer_value, 10)
+```
+
+## Unique Customers
+
+```{r unique-customers}
+unique_customer_count <-
+  n_distinct(customer_data$CustomerID)
+
+unique_customer_count
+```
+
+# Repeat Purchase Analysis
+
+Customer purchase dates were analyzed to estimate the number of days between consecutive shopping visits.
+
+Multiple product rows can belong to the same customer purchase, so unique customer-date combinations are used before calculating the time between visits.
+
+```{r repeat-purchase-analysis}
+customer_purchase_dates <- customer_data %>%
+  filter(!is.na(InvoiceDateParsed)) %>%
+  distinct(
+    CustomerID,
+    InvoiceDateParsed
+  ) %>%
+  arrange(
+    CustomerID,
+    InvoiceDateParsed
+  )
+
+repeat_purchase_intervals <-
+  customer_purchase_dates %>%
+  group_by(CustomerID) %>%
+  mutate(
+    DaysBetweenPurchases =
+      as.numeric(
+        InvoiceDateParsed -
+        lag(InvoiceDateParsed)
+      )
+  ) %>%
+  ungroup() %>%
+  filter(
+    !is.na(DaysBetweenPurchases),
+    DaysBetweenPurchases > 0
+  )
+
+average_days_between_purchases <-
+  mean(
+    repeat_purchase_intervals$DaysBetweenPurchases,
+    na.rm = TRUE
+  )
+
+average_days_between_purchases
+```
+
+# Returns & Cancellation Analysis
+
+Negative quantity values are used to identify cancelled transaction records.
+
+The cancellation rate for French customers was calculated as the number of cancelled transaction records divided by the total number of French transaction records.
+
+```{r france-cancellation}
+france_transactions <- retail %>%
+  filter(Country == "France")
+
+france_cancellation_rate <-
+  100 *
+  sum(
+    france_transactions$Quantity < 0,
+    na.rm = TRUE
+  ) /
+  nrow(france_transactions)
+
+france_cancellation_rate
+```
+
+# Product Performance Analysis
+
+Products were ranked according to total transaction value to identify the retailer's highest revenue-generating items.
+
+```{r product-performance}
+product_revenue <- retail %>%
+  group_by(
+    StockCode,
+    Description
+  ) %>%
+  summarise(
+    TotalTransactionValue =
+      sum(TransactionValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(TotalTransactionValue))
+
+head(product_revenue, 10)
+```
+
+## Top Product Visualization
+
+```{r product-chart}
+top_products <- product_revenue %>%
+  filter(!is.na(Description)) %>%
+  slice_max(
+    order_by = TotalTransactionValue,
+    n = 10
+  )
+
+ggplot(
+  top_products,
+  aes(
+    x = reorder(
+      Description,
+      TotalTransactionValue
+    ),
+    y = TotalTransactionValue
+  )
+) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Top Products by Transaction Value",
+    x = "Product",
+    y = "Total Transaction Value"
+  ) +
+  theme_minimal()
+```
+
+# Germany Transaction Value Distribution
+
+The distribution of transaction values for German customers was evaluated to understand the spread of transaction-level values.
+
+```{r germany-analysis}
+germany_transactions <- retail %>%
+  filter(Country == "Germany")
+
+hist(
+  germany_transactions$TransactionValue,
+  main = "Distribution of Transaction Values - Germany",
+  xlab = "Transaction Value"
+)
+```
+
+# Key Analytical Outputs
+
+The completed analysis provides insight into:
+
+- Geographic concentration of transaction activity
+- Revenue contribution across countries
+- Customer activity and customer value
+- Repeat-purchase behavior
+- Product-level revenue performance
+- Cancellation behavior
+- Missing customer information
+- Weekday and monthly transaction patterns
+- Hourly customer activity
+- Potential low-activity maintenance periods
+
+# Skills Demonstrated
+
+- R
+- dplyr
+- ggplot2
+- Data Wrangling
+- Exploratory Data Analysis
+- Feature Engineering
+- Descriptive Statistics
+- Customer Analytics
+- Revenue Analysis
+- Product Analytics
+- Data Quality Analysis
+- Data Visualization
+
+# Conclusion
+
+This project demonstrates an end-to-end retail analytics workflow, beginning with raw transaction data and progressing through data preparation, quality assessment, feature engineering, customer analysis, geographic analysis, revenue analysis, product analysis, and visualization.
+
+The analysis shows how transaction-level retail data can be transformed into actionable business insights that support customer understanding, revenue monitoring, merchandising decisions, and operational planning.
