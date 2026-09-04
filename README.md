@@ -27,6 +27,16 @@ The analysis uses an online retail dataset containing **541,909 transaction reco
 
 The transactions cover the period from **December 2010 through December 2011** and include customers across multiple countries.
 
+### Data Availability
+
+The original dataset contains **541,909 transaction records**. This GitHub repository includes a **10,000-row sample dataset** so the analysis can be easily reviewed and reproduced.
+
+The R Markdown file in this repository runs using the sample dataset, so results may differ from the complete dataset.
+
+### Analysis Report
+
+[View the rendered HTML analysis report](analysis/online_retail_analysis.html)
+
 ### Key Variables
 
 - `InvoiceNo` – Unique transaction/invoice identifier
