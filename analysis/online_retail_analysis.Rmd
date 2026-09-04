@@ -30,7 +30,7 @@ library(ggplot2)
 The dataset contains transaction-level records from a UK-based online retailer, including invoice information, products, quantities, prices, customer identifiers, and customer countries.
 
 ```{r data-import}
-retail <- read.csv("../data/Online_Retail.csv")
+retail <- read.csv("../data/Online_Retail_sample.csv")
 
 dim(retail)
 head(retail)
