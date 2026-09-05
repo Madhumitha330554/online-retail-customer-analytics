@@ -35,7 +35,7 @@ The R Markdown file in this repository runs using the sample dataset, so results
 
 ### Analysis Report
 
-[View the rendered HTML analysis report](analysis/online_retail_analysis.html)
+[View the Live Interactive Analysis Report](https://madhumitha330554.github.io/online-retail-customer-analytics/analysis/online_retail_analysis.html)
 
 ### Key Variables
 
